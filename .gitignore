@@ -1,4 +1,4 @@
 ReadMe.docx
 Mark.docx
-DotNetFullTextIndex\bin\*.*
-DotNetFullTextIndex\obj\*.*
+DotNetFullTextIndex/bin/
+DotNetFullTextIndex/obj/
