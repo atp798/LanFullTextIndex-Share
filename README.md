@@ -8,5 +8,5 @@ brief
 >Text segmentation component is provided by the open source project: [PanGu](http://pangusegment.codeplex.com/).<br>
 >Use udp multicast to receive search requests<br>
 >Sending and receiving messages or files with TCP synchronous transmission.<br>
-[For exchange](https://jq.qq.com/?_wv=1027&k=5hiAckd "QQ group") More infomation is in group files.
+[For exchange](https://jq.qq.com/?_wv=1027&k=5hiAckd "QQ group 472293636") More infomation is in group files.
 

@@ -387,7 +387,8 @@ namespace FullTextIndex
                                 string temp = doc.Paragraphs[i].Range.Text.Trim();
                                 strBuilder.AppendLine(temp);
                             }
-                            tdoc.Title = doc.Paragraphs[1].Range.Text.Trim();
+                            string titletmp = doc.Paragraphs[1].Range.Text.Trim();
+                            tdoc.Title = titletmp==""?tdoc.Name.Substring(0, tdoc.Name.LastIndexOf('.')):titletmp;
                             tdoc.Content = strBuilder.ToString();
                             totalChars += strBuilder.Length;
                         }

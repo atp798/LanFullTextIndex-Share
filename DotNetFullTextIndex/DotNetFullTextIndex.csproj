@@ -100,6 +100,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="FullTextIndex\DocProcess.cs" />
+    <Compile Include="FullTextIndex\IDocProc.cs" />
     <Compile Include="NetWork\NetClass.cs" />
     <Compile Include="NetWork\NetObject.cs" />
     <Compile Include="Common\CommMethod.cs" />
