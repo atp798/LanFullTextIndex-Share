@@ -36,6 +36,10 @@ namespace DotNetFullTextIndex
             {
                 m_Index.FolderDic[dt.Rows[i][GlobalVar.FCOL_Path].ToString()] = Convert.ToInt32(dt.Rows[i][GlobalVar.FCOL_Recursive]) == 0 ? false : true;
             }
+            DocProcess docProc = DocProcess.GetInstance();
+            docProc.Register(new WordProc());
+            docProc.Register(new PdfProc());
+            docProc.Register(new TxtProc());
         }
 
         public string GetIndexDir() {

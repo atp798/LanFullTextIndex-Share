@@ -24,23 +24,29 @@ namespace FullTextIndex
 
         private static Dictionary<string,IDocProc> dicDocType;
 
-
-        public bool RegisterDocType(string ext, IDocProc docProcObj)
-        { 
-            if(!ext.StartsWith(".")){
-                return false;
+        public void Register(IDocProc docProcObj)
+        {
+            List<string> extList = docProcObj.GetSupportExt();
+            foreach (string ext in extList)
+            {
+                if (!ext.StartsWith("."))
+                {
+                    continue;
+                }
+                dicDocType[ext] = docProcObj;
             }
-            dicDocType[ext] = docProcObj;
-            return true;
         }
 
-        public bool UnRegisterDocType(string ext)
+        public void UnRegister(IDocProc docProcObj)
         {
-            if (dicDocType.ContainsKey(ext)) {
-                dicDocType.Remove(ext);
-                return true;
+            List<string> extList = docProcObj.GetSupportExt();
+            foreach (string ext in extList)
+            {
+                if (dicDocType.ContainsKey(ext))
+                {
+                    dicDocType.Remove(ext);
+                }
             }
-            return false;
         }
 
         public TDocs DealWithDoc(FileInfo fi)

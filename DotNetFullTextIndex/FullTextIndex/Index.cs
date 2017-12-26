@@ -57,6 +57,8 @@ namespace FullTextIndex
         private const int MaxCount = 10000;
         public Dictionary<string, bool> FolderDic;
         private string _indexDir;
+        DocProcess docProc;
+
 
         public String INDEX_DIR
         {
@@ -167,17 +169,18 @@ namespace FullTextIndex
 
         public Index() {
             FolderDic = new Dictionary<string, bool>();
+            docProc = DocProcess.GetInstance();
         }
 
-        public void CreateIndex()
+        public void CreateIndex(bool create=true)
         {
             try
             {
-                writer = new IndexWriter(INDEX_DIR, new PanGuAnalyzer(), true);
+                writer = new IndexWriter(INDEX_DIR, new PanGuAnalyzer(), create);
             }
             catch
             {
-                writer = new IndexWriter(INDEX_DIR, new PanGuAnalyzer(), false);
+                writer = new IndexWriter(INDEX_DIR, new PanGuAnalyzer(), create);
             }
         }
 
@@ -318,151 +321,33 @@ namespace FullTextIndex
         }
 
         private void buildIndexOfSubFiles(DirectoryInfo dir) {
-            FileInfo[] fi = dir.GetFiles();
-            //default max value is 2147483647 = 2^31-1
-            StringBuilder strBuilder = new StringBuilder();
-            DateTime dtstart;
-            try
+            FileInfo[] fiArr = dir.GetFiles();
+            foreach (FileInfo fi in fiArr)
             {
-                bool wordopen = true;
-                Word.Application app = null;
-                Word.Document doc = null;
-                object unknow = Type.Missing;
-                try
+                TDocs tdoc = docProc.DealWithDoc(fi);
+                if (tdoc == null) continue;
+                if (tdoc.Content.Length > 0)
                 {
-                    app = new Microsoft.Office.Interop.Word.Application();
-                }
-                catch (Exception ex)
-                {
-                    wordopen = false;
-                    Debug.Write(ex.Message);
-                }
-
-                foreach (FileInfo f in fi)
-                {
-                    dtstart = DateTime.Now;
-                    strBuilder.Clear();
-                    String filepath = f.FullName;
-                    String filename = f.Name;
-                    TDocs tdoc = new TDocs();
-                    tdoc.Path = filepath;
-                    tdoc.Name = filename;
-                    tdoc.Extension = f.Extension;
-                    if (f.Extension == ".txt")
+                    DateTime dtStart = DateTime.Now;
+                    IndexFileContent(tdoc);
+                    DateTime dtEnd = DateTime.Now;
+                    TimeSpan time = dtEnd - dtStart;
+                    totalChars += tdoc.Content.Length;
+                    count++;
+                    if (count >= MaxCount)
                     {
-                        FileStream fs = new FileStream(f.FullName, FileMode.Open);
-                        byte[] buf = new byte[1048576];//1mb
-                        while (fs.Read(buf, 0, buf.Length) > 0)
-                        {
-                            strBuilder.Append(Encoding.Default.GetString(buf));
-                        }
-                        totalChars += strBuilder.Length;
-                        tdoc.Title = tdoc.Name.Substring(0, tdoc.Name.LastIndexOf('.'));
-                        tdoc.Content = strBuilder.ToString();
-                        fs.Close();
+                        break;
                     }
-                    else if (f.Extension == ".doc" || f.Extension == ".docx")
+                    if (count % 10 == 0)
                     {
-                        if (tdoc.Name.Substring(0, tdoc.Name.LastIndexOf('.')).StartsWith("~$") || !wordopen)
-                        {
-                            continue;
-                        }
-                        try
-                        {
-                            object conf = false;
-                            app.Visible = false;
-                            object file = f.FullName;
-                            doc = app.Documents.Open(ref file,
-                                ref conf, ref unknow, ref unknow, ref unknow,
-                                ref unknow, ref unknow, ref unknow, ref unknow,
-                                ref unknow, ref unknow, ref unknow, ref unknow,
-                                ref unknow, ref unknow, ref unknow);
-                            int i = 0;
-                            //notice that: the index of doc.Paragraphs counts from 1~Count, not starts with 0
-                            for (i = 2; i <= doc.Paragraphs.Count; i++)
-                            {
-                                if (dtstart.AddSeconds(30) < DateTime.Now) {
-                                    break;
-                                }
-                                string temp = doc.Paragraphs[i].Range.Text.Trim();
-                                strBuilder.AppendLine(temp);
-                            }
-                            string titletmp = doc.Paragraphs[1].Range.Text.Trim();
-                            tdoc.Title = titletmp==""?tdoc.Name.Substring(0, tdoc.Name.LastIndexOf('.')):titletmp;
-                            tdoc.Content = strBuilder.ToString();
-                            totalChars += strBuilder.Length;
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine(ex.Message);
-                        }
-                        finally
-                        {
-                            if (doc != null)
-                            {
-                                ((Microsoft.Office.Interop.Word._Document)doc).Close(ref unknow, ref unknow, ref unknow);
-                            }
-                        }
-                    }
-                    else if (f.Extension == ".pdf")
-                    {
-                        PdfReader pdfReader = null;
-                        try
-                        {
-                            pdfReader = new PdfReader(f.FullName);
-                            int numberOfPages = pdfReader.NumberOfPages;
-                            for (int i = 1; i <= numberOfPages; ++i)
-                            {
-                                if (dtstart.AddSeconds(20) < DateTime.Now)
-                                {
-                                    break;
-                                }
-                                iTextSharp.text.pdf.parser.ITextExtractionStrategy strategy = new iTextSharp.text.pdf.parser.SimpleTextExtractionStrategy();
-                                strBuilder.Append(iTextSharp.text.pdf.parser.PdfTextExtractor.GetTextFromPage(pdfReader, i, strategy));
-                            }
-                            tdoc.Title = tdoc.Name.Substring(0, tdoc.Name.LastIndexOf('.'));
-                            tdoc.Content = strBuilder.ToString();
-                            totalChars += strBuilder.Length;
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine(ex.Message);
-                            //StreamWriter wlog = File.AppendText(System.AppDomain.CurrentDomain.SetupInformation.ApplicationBase + "\\mylog.log");
-                            //wlog.Flush();
-                            //wlog.Close(); 
-                        }
-                        finally
-                        {
-                            if (pdfReader != null)
-                            {
-                                pdfReader.Close();
-                            }
-                        }
-                    }
-                    if (strBuilder.Length > 0)
-                    {
-                        IndexFileContent(tdoc);
-                        count++;
-                        if (count >= MaxCount)
-                        {
-                            break;
-                        }
-                        if (count % 1000 == 0)
-                        {
-                            writer.Close();
-                            CreateIndex();
-                            MergeFactor = 10;
-                            MaxBufferDocs = 1000;
-                            MaxMergeDocs = 10000;
-                            MaxFieldLength = 100000;
-                        }
+                        writer.Close();
+                        CreateIndex(false);
+                        MergeFactor = 10;
+                        MaxBufferDocs = 1000;
+                        MaxMergeDocs = 10000;
+                        MaxFieldLength = 100000;
                     }
                 }
-                ((Microsoft.Office.Interop.Word._Application)app).Quit();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine(ex.Message);
             }
         }
 
@@ -493,7 +378,8 @@ namespace FullTextIndex
             {
                 CreateIndex();
             }
-
+            count = 0;
+            totalChars = 0;
             MergeFactor = 10;
             MaxBufferDocs = 1000;
             MaxMergeDocs = 10000;
