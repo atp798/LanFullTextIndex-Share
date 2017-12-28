@@ -8,6 +8,7 @@ namespace FullTextIndex
 {
     public class DocProcess
     {
+        //single instance pattern
         private static class LazyHolder
         {
             public static DocProcess m_Instance = new DocProcess();
@@ -16,6 +17,7 @@ namespace FullTextIndex
         private DocProcess()
         {
             dicDocType = new Dictionary<string, IDocProc>();
+            indexAllFileNames = true;
         }
 
         public static DocProcess GetInstance(){
@@ -23,6 +25,7 @@ namespace FullTextIndex
         }
 
         private static Dictionary<string,IDocProc> dicDocType;
+        private bool indexAllFileNames;
 
         public void Register(IDocProc docProcObj)
         {
@@ -49,13 +52,37 @@ namespace FullTextIndex
             }
         }
 
+        public void IndexAllFileNames() {
+            indexAllFileNames = true;
+        }
+
+        public void UnIndexUnsupportType() {
+            indexAllFileNames = false;
+        }
+
+        private TDocs defaultProc(FileInfo fi) {
+            if (indexAllFileNames)
+            {
+                TDocs tdoc = new TDocs();
+                tdoc.Path = fi.FullName;
+                tdoc.Name = fi.Name;
+                tdoc.Extension = fi.Extension.ToLower();
+                tdoc.Title = tdoc.Name.Substring(0, tdoc.Name.LastIndexOf('.'));
+                tdoc.Content = "";
+                return tdoc;
+            }
+            else {
+                return null;
+            }
+        }
+
         public TDocs DealWithDoc(FileInfo fi)
         {
-            if (dicDocType.ContainsKey(fi.Extension)) {
-                IDocProc idoc = dicDocType[fi.Extension];
+            if (dicDocType.ContainsKey(fi.Extension.ToLower())) {
+                IDocProc idoc = dicDocType[fi.Extension.ToLower()];
                 return idoc.Process(fi);
             }
-            return null;
+            return defaultProc(fi);
         }
     }
 }

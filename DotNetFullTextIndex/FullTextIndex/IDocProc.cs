@@ -6,6 +6,7 @@ using System.IO;
 using Word = Microsoft.Office.Interop.Word;
 using iTextSharp.text.pdf;
 using System.Diagnostics;
+using System.Threading;
 
 namespace FullTextIndex
 {
@@ -16,33 +17,53 @@ namespace FullTextIndex
         TDocs Process(FileInfo fi);
     }
 
+    public class DefaultProc : IDocProc
+    {
+        private int timeLimit = 100000;
+        private List<string> listExt = new List<string>();
+        public DefaultProc(){}
+        
+        public void SetTimeLimit(int milliSeconds)
+        {
+            timeLimit = milliSeconds;
+        }
+
+        public bool AddSupportExt(string ext){
+            if (!ext.StartsWith("."))
+            {
+                return false;
+            }
+            listExt.Add(ext);
+            return true;
+        }
+
+        public List<string> GetSupportExt()
+        {
+            return listExt;
+        }
+
+        public TDocs Process(FileInfo fi)
+        {
+            TDocs tdoc = new TDocs();
+            tdoc.Path = fi.FullName;
+            tdoc.Name = fi.Name;
+            tdoc.Extension = fi.Extension.ToLower();
+            tdoc.Title = tdoc.Name.Substring(0, tdoc.Name.LastIndexOf('.'));
+            return tdoc;
+        }
+
+    }
+
     public class WordProc : IDocProc
     {
         private int timeLimit = 100000;
-        //default max value is 2147483647 = 2^31-1
-        private StringBuilder strBuilder;
 
-        private Word.Application app = null;
-        private bool appOpened = false;
         private static int MaxTitle { get { return 30; } }
 
         public WordProc() {
-            strBuilder = new StringBuilder();
-            try
-            {
-                app = new Microsoft.Office.Interop.Word.Application();
-                appOpened = true;
-            }
-            catch (Exception ex)
-            {
-                appOpened = false;
-                Debug.Write(ex.Message);
-            }
         }
 
-        ~WordProc() { 
-            if(appOpened)
-                ((Microsoft.Office.Interop.Word._Application)app).Quit();
+        ~WordProc(){
         }
 
         public void SetTimeLimit(int milliSeconds)
@@ -58,26 +79,43 @@ namespace FullTextIndex
             return list;
         }
 
-        public TDocs Process(FileInfo fi) {
-            if (!appOpened)
-                return null;
+        public TDocs Process(FileInfo fi)
+        {
             if (fi.Name.StartsWith("~$"))
             {
                 return null;
             }
+            //default max value is 2147483647 = 2^31-1
+            StringBuilder strBuilder = new StringBuilder();
+
+            Word.Application app = null;
+            bool appOpened = false;
+            try
+            {
+                app = new Microsoft.Office.Interop.Word.Application();
+                appOpened = true;
+            }
+            catch (Exception ex)
+            {
+                appOpened = false;
+                Debug.Write(ex.Message);
+            }
+        
             Word.Document doc = null;
             object unknow = Type.Missing;
-            DateTime dtStart = DateTime.Now;
-            strBuilder.Clear();
 
             TDocs tdoc = new TDocs();
             tdoc.Path = fi.FullName;
             tdoc.Name = fi.Name;
-            tdoc.Extension = fi.Extension;
+            tdoc.Extension = fi.Extension.ToLower();
             tdoc.Title = tdoc.Name.Substring(0, tdoc.Name.LastIndexOf('.'));
+
+            if (!appOpened)
+                return tdoc;
 
             try
             {
+                DateTime dtStart = DateTime.Now;
                 object conf = false;
                 app.Visible = false;
                 object file = fi.FullName;
@@ -115,6 +153,7 @@ namespace FullTextIndex
                 DateTime dtEnd = DateTime.Now;
                 TimeSpan timeInter = dtEnd - dtStart;
                 tdoc.Content = strBuilder.ToString();
+                ((Microsoft.Office.Interop.Word._Document)doc).Close(ref unknow, ref unknow, ref unknow);
             }
             catch (Exception ex)
             {
@@ -122,10 +161,7 @@ namespace FullTextIndex
             }
             finally
             {
-                if (doc != null)
-                {
-                    ((Microsoft.Office.Interop.Word._Document)doc).Close(ref unknow, ref unknow, ref unknow);
-                }
+                ((Microsoft.Office.Interop.Word._Application)app).Quit();
             }
             return tdoc;
         }
@@ -133,10 +169,8 @@ namespace FullTextIndex
 
     public class PdfProc : IDocProc {
         private int timeLimit = 20000;
-        private StringBuilder strBuilder;
 
         public PdfProc() {
-            strBuilder = new StringBuilder();
         }
 
         public void SetTimeLimit(int milliSeconds)
@@ -152,20 +186,21 @@ namespace FullTextIndex
         }
 
         public TDocs Process(FileInfo fi) {
+            StringBuilder strBuilder = new StringBuilder();
             PdfReader pdfReader = null;
-            DateTime dtStart = DateTime.Now;
-            strBuilder.Clear();
 
             TDocs tdoc = new TDocs();
             tdoc.Path = fi.FullName;
             tdoc.Name = fi.Name;
-            tdoc.Extension = fi.Extension;
+            tdoc.Extension = fi.Extension.ToLower();
             tdoc.Title = tdoc.Name.Substring(0, tdoc.Name.LastIndexOf('.'));
             try
             {
+                DateTime dtStart = DateTime.Now;
                 pdfReader = new PdfReader(fi.FullName);
                 int numberOfPages = pdfReader.NumberOfPages;
-                for (int i = 1; i <= numberOfPages; ++i)
+                int i;
+                for (i = 1; i <= numberOfPages; ++i)
                 {
                     if (dtStart.AddMilliseconds(timeLimit) < DateTime.Now)
                     {
@@ -181,9 +216,6 @@ namespace FullTextIndex
             catch (Exception ex)
             {
                 Debug.WriteLine(ex.Message);
-                //StreamWriter wlog = File.AppendText(System.AppDomain.CurrentDomain.SetupInformation.ApplicationBase + "\\mylog.log");
-                //wlog.Flush();
-                //wlog.Close(); 
             }
             finally
             {
@@ -199,10 +231,8 @@ namespace FullTextIndex
     public class TxtProc : IDocProc
     {
         private int timeLimit = 10000;
-        private StringBuilder strBuilder;
 
         public TxtProc() {
-            strBuilder = new StringBuilder();
         }
 
         public void SetTimeLimit(int milliSeconds)
@@ -217,29 +247,32 @@ namespace FullTextIndex
             return list;
         }
 
-        public TDocs Process(FileInfo fi) {
-            DateTime dtStart = DateTime.Now;
-            strBuilder.Clear();
+        public TDocs Process(FileInfo fi)
+        {
+            StringBuilder strBuilder = new StringBuilder();
 
             TDocs tdoc = new TDocs();
             tdoc.Path = fi.FullName;
             tdoc.Name = fi.Name;
-            tdoc.Extension = fi.Extension;
+            tdoc.Extension = fi.Extension.ToLower();
             tdoc.Title = tdoc.Name.Substring(0, tdoc.Name.LastIndexOf('.'));
             FileStream fs = null;
             try
             {
-
+                DateTime dtStart = DateTime.Now;
                 fs = new FileStream(fi.FullName, FileMode.Open);
                 byte[] buf = new byte[1048576];//1mb
-                while (fs.Read(buf, 0, buf.Length) > 0)
+                int byteRead = 0;
+                do
                 {
                     if (dtStart.AddMilliseconds(timeLimit) < DateTime.Now)
                     {
-                        break;
+                         break;
                     }
-                    strBuilder.Append(Encoding.Default.GetString(buf));
-                }
+                    byteRead = fs.Read(buf, 0, buf.Length);
+                    string str = Encoding.Default.GetString(buf,0,byteRead);
+                    strBuilder.Append(str);
+                } while (byteRead > 0);
                 DateTime dtEnd = DateTime.Now;
                 TimeSpan timeInter = dtEnd - dtStart;
                 tdoc.Content = strBuilder.ToString();

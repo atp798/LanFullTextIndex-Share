@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.IO;
 using System.Diagnostics;
+using System.Threading;
 using Lucene.Net.Index;
 using Lucene.Net.Documents;
 using Lucene.Net.Analysis.Standard;
@@ -59,6 +60,12 @@ namespace FullTextIndex
         private string _indexDir;
         DocProcess docProc;
 
+        private delegate void ProcessDocsDelegate(FileInfo fi);
+        ProcessDocsDelegate procDocsDelg;
+        private int asyncProcCtn;
+        private static Mutex procMutex;
+        public int MaxAsyncProc { get; set; }
+        private int procWaitInterval = 1000; //milliseconds
 
         public String INDEX_DIR
         {
@@ -170,6 +177,9 @@ namespace FullTextIndex
         public Index() {
             FolderDic = new Dictionary<string, bool>();
             docProc = DocProcess.GetInstance();
+            procDocsDelg = new ProcessDocsDelegate(ProcessDocsCallBack);
+            MaxAsyncProc = 10;
+            procMutex = new Mutex(false);
         }
 
         public void CreateIndex(bool create=true)
@@ -193,7 +203,7 @@ namespace FullTextIndex
             doc.Add(field);
             field = new Field("title",tdoc.Title, Field.Store.YES, Field.Index.TOKENIZED);
             doc.Add(field);
-            field = new Field("ext", tdoc.Extension, Field.Store.YES, Field.Index.UN_TOKENIZED);
+            field = new Field("ext", tdoc.Extension.ToLower(), Field.Store.YES, Field.Index.UN_TOKENIZED);
             doc.Add(field);
             field = new Field("content", tdoc.Content, Field.Store.YES, Field.Index.TOKENIZED);
             doc.Add(field);
@@ -320,35 +330,74 @@ namespace FullTextIndex
             return result;
         }
 
+        private void ProcessDocsCallBack(object fi) {
+            procMutex.WaitOne();
+            asyncProcCtn++;
+            procMutex.ReleaseMutex();
+
+            TDocs tdoc = docProc.DealWithDoc((FileInfo)fi);
+            if (tdoc == null)
+            {
+                procMutex.WaitOne();
+                asyncProcCtn--;
+                procMutex.ReleaseMutex();
+                return; 
+            }
+            DateTime dtStart = DateTime.Now;
+
+            procMutex.WaitOne();
+            IndexFileContent(tdoc);
+            DateTime dtEnd = DateTime.Now;
+            TimeSpan time = dtEnd - dtStart;
+            totalChars += tdoc.Content.Length;
+            count++;
+            if (count >= MaxCount)
+            {
+                asyncProcCtn--;
+                return;
+            }
+            /*
+            if (count % 10 == 0)
+            {
+                writer.Close();
+                CreateIndex(false);
+                MergeFactor = 10;
+                MaxBufferDocs = 1000;
+                MaxMergeDocs = 10000;
+                MaxFieldLength = 100000;
+            }
+             * */
+            asyncProcCtn--;
+            procMutex.ReleaseMutex();
+        }
+
         private void buildIndexOfSubFiles(DirectoryInfo dir) {
             FileInfo[] fiArr = dir.GetFiles();
             foreach (FileInfo fi in fiArr)
             {
-                TDocs tdoc = docProc.DealWithDoc(fi);
-                if (tdoc == null) continue;
-                if (tdoc.Content.Length > 0)
-                {
-                    DateTime dtStart = DateTime.Now;
-                    IndexFileContent(tdoc);
-                    DateTime dtEnd = DateTime.Now;
-                    TimeSpan time = dtEnd - dtStart;
-                    totalChars += tdoc.Content.Length;
-                    count++;
-                    if (count >= MaxCount)
-                    {
+                while (true) { 
+                    if (asyncProcCtn < MaxAsyncProc) {
                         break;
                     }
-                    if (count % 10 == 0)
-                    {
-                        writer.Close();
-                        CreateIndex(false);
-                        MergeFactor = 10;
-                        MaxBufferDocs = 1000;
-                        MaxMergeDocs = 10000;
-                        MaxFieldLength = 100000;
-                    }
+                    Thread.Sleep(procWaitInterval);
                 }
+                
+                procDocsDelg.BeginInvoke(fi, null, null);
+
+                //Thread procTh = new Thread(new ParameterizedThreadStart(ProcessDocsCallBack));
+                //procTh.Start(fi);
+                
             }
+            
+            while (true)
+            {
+                if (asyncProcCtn <= 0)
+                {
+                    break;
+                }
+                Thread.Sleep(procWaitInterval);
+            }
+             
         }
 
         private void buildIndexOfSubDir(DirectoryInfo dir) { 
@@ -384,6 +433,7 @@ namespace FullTextIndex
             MaxBufferDocs = 1000;
             MaxMergeDocs = 10000;
             MaxFieldLength = 100000;
+            asyncProcCtn = 0;
 
             foreach (string path in FolderDic.Keys)
             {
@@ -416,7 +466,6 @@ namespace FullTextIndex
         {
 
         }
-
 
     }
 }

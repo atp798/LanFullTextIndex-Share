@@ -210,6 +210,8 @@ namespace DotNetFullTextIndex
             string fileSavePath="";
             if (dr == DialogResult.Yes) {
                 SaveFileDialog sfdlg = new SaveFileDialog();
+                sfdlg.DefaultExt = path.Substring(path.LastIndexOf("."));
+                sfdlg.RestoreDirectory = true;
                 if (sfdlg.ShowDialog() == System.Windows.Forms.DialogResult.OK) {
                     fileSavePath = sfdlg.FileName;
                 }

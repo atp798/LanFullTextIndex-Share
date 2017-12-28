@@ -77,5 +77,15 @@ namespace FullTextIndex
                 m_Abstract = value;
             }
         }
+
+        public TDocs(){
+            //initial all members to avoid the null reference exceptions
+            Path = "";
+            Name = "";
+            Title = "";
+            Extension = "";
+            Content = "";
+            Abstract = "";
+        }
     }
 }
